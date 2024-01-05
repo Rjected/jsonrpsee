@@ -32,7 +32,7 @@ use crate::helpers::{generate_where_clause, is_option};
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, quote_spanned};
 use syn::punctuated::Punctuated;
-use syn::{token, AttrStyle, Attribute, Path, PathSegment};
+use syn::{token, AttrStyle, Attribute, Path, PathSegment, Meta, MetaNameValue, Expr, MetaList};
 
 impl RpcDescription {
 	pub(super) fn render_server(&self) -> Result<TokenStream2, syn::Error> {
@@ -384,12 +384,24 @@ impl RpcDescription {
 				punc_attr
 					.push_value(PathSegment { ident: quote::format_ident!("serde"), arguments: Default::default() });
 
+                let alias_meta_name_value = MetaNameValue {
+                    path: Path { leading_colon: None, segments: punc_attr },
+                    eq_token: Default::default(),
+                    value: Expr::Verbatim(TokenStream2::from_str(&format!("\"{}\"", alias_vals.as_str())).unwrap())
+                };
+
+                // is this correct?
+                // let meta_list = MetaList {
+                //     path: Path { leading_colon: None, segments: punc_attr },
+                //     delimiter: MacroDelimi,
+                //     tokens: TokenStream2::from_str(&format!("alias = \"{}\"", alias_vals.as_str())).unwrap()
+                // };
+
 				let serde_alias = Attribute {
 					pound_token: token::Pound::default(),
 					style: AttrStyle::Outer,
 					bracket_token: Default::default(),
-					path: Path { leading_colon: None, segments: punc_attr },
-					tokens: TokenStream2::from_str(&format!("({})", alias_vals.as_str())).unwrap(),
+                    meta: Meta::NameValue(alias_meta_name_value),
 				};
 
 				quote! {

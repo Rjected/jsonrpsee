@@ -197,7 +197,7 @@ impl RpcDescription {
 		&self,
 		params: &[(syn::PatIdent, syn::Type)],
 		param_kind: &ParamKind,
-		signature: &syn::TraitItemMethod,
+		signature: &syn::TraitItemFn,
 	) -> TokenStream2 {
 		let jsonrpsee = self.jsonrpsee_client_path.as_ref().unwrap();
 

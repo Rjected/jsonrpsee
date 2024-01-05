@@ -46,6 +46,12 @@ pub struct FindAllParams {
 	pub(crate) sub_params: HashSet<syn::Ident>,
 	pub(crate) visiting_return_type: bool,
 	pub(crate) visiting_fn_arg: bool,
+    // Type for connecting generics and their associated types. Acts as a stack and is cleared
+    // after each argument or return type visit.
+    pub(crate) associated_types: Vec<syn::Ident>,
+    // We need to skip the first identifier in a function argument as it is the name of the
+    // argument.
+    pub(crate) skip_first: bool,
 }
 
 impl FindAllParams {
@@ -59,6 +65,8 @@ impl FindAllParams {
 			sub_params,
 			visiting_return_type: false,
 			visiting_fn_arg: false,
+            skip_first: true,
+            associated_types: Vec::default(),
 		}
 	}
 }
@@ -79,23 +87,45 @@ impl<'ast> Visit<'ast> for FindAllParams {
 
 	/// Visit ident.
 	fn visit_ident(&mut self, ident: &'ast syn::Ident) {
+        println!("visiting_fn_arg: {}", ident);
 		if self.trait_generics.contains(ident) {
 			if self.visiting_return_type {
 				self.ret_params.insert(ident.clone());
 			}
 			if self.visiting_fn_arg {
 				self.input_params.insert(ident.clone());
+                self.associated_types.push(ident.clone());
 			}
-		}
+		} else if !self.skip_first {
+            // we need to continue in case this is an associated type
+            // in this case we want to append it to the existing
+            if self.visiting_fn_arg {
+                self.associated_types.push(ident.clone());
+            }
+        }
+
+        if self.skip_first {
+            self.skip_first = false;
+        }
 	}
 
 	/// Visit function argument and mark it as `visiting_fn_arg`.
 	/// To know whether a given Ident is a function argument or return type when traversing.
 	fn visit_fn_arg(&mut self, arg: &'ast syn::FnArg) {
 		self.visiting_fn_arg = true;
+        self.skip_first = true;
 		visit::visit_fn_arg(self, arg);
+        println!("{:?}", self.associated_types);
+        self.associated_types.clear();
 		self.visiting_fn_arg = false;
 	}
+}
+
+/// A type that represents either an associated type or a generic type parameter.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum GenericOrAssociatedType {
+    Generic(syn::Ident),
+    AssociatedType(syn::AssocType),
 }
 
 impl FindSubscriptionParams {

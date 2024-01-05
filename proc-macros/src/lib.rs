@@ -29,6 +29,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
 use rpc_macro::RpcDescription;
+use syn::{Meta, MetaList};
 
 mod attributes;
 mod helpers;
@@ -391,12 +392,18 @@ pub(crate) mod visitor;
 pub fn rpc(attr: TokenStream, item: TokenStream) -> TokenStream {
 	let attr = proc_macro2::TokenStream::from(attr);
 
+    // build the meta
+    let meta_rpc = Meta::List(MetaList {
+        todo!()
+    });
+
 	let rebuilt_rpc_attribute = syn::Attribute {
 		pound_token: syn::token::Pound::default(),
 		style: syn::AttrStyle::Outer,
 		bracket_token: syn::token::Bracket::default(),
-		path: syn::Ident::new("rpc", proc_macro2::Span::call_site()).into(),
-		tokens: quote! { (#attr) },
+        meta: meta_rpc,
+		// path: syn::Ident::new("rpc", proc_macro2::Span::call_site()).into(),
+		// tokens: quote! { (#attr) },
 	};
 
 	match rpc_impl(rebuilt_rpc_attribute, item) {

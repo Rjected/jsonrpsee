@@ -128,19 +128,25 @@ pub(crate) fn generate_where_clause(
 
 			if is_client {
 				if visitor.input_params.contains(&ty.ident) {
+                    println!("input params (client, serialize): {:?}, identifier: {:?}", visitor.input_params, ty.ident);
 					bounds.push(parse_quote!(jsonrpsee::core::Serialize))
 				}
 				if visitor.ret_params.contains(&ty.ident) || visitor.sub_params.contains(&ty.ident) {
+                    println!("ret params (client, deserialize): {:?}, identifier: {:?}", visitor.ret_params, ty.ident);
+                    println!("sub params (client, deserialize): {:?}, identifier: {:?}", visitor.sub_params, ty.ident);
 					bounds.push(parse_quote!(jsonrpsee::core::DeserializeOwned))
 				}
 			} else {
 				if visitor.input_params.contains(&ty.ident) {
+                    println!("input params (server, deserialize): {:?}, identifier: {:?}", visitor.input_params, ty.ident);
 					bounds.push(parse_quote!(jsonrpsee::core::DeserializeOwned))
 				}
 				if visitor.ret_params.contains(&ty.ident) {
 					bounds.push(parse_quote!(std::clone::Clone))
 				}
 				if visitor.ret_params.contains(&ty.ident) || visitor.sub_params.contains(&ty.ident) {
+                    println!("ret params (server, serialize): {:?}, identifier: {:?}", visitor.ret_params, ty.ident);
+                    println!("sub params (client, serialize): {:?}, identifier: {:?}", visitor.sub_params, ty.ident);
 					bounds.push(parse_quote!(jsonrpsee::core::Serialize))
 				}
 			}
@@ -199,9 +205,9 @@ pub(crate) fn is_option(ty: &syn::Type) -> bool {
 /// Thus, if the attribute starts with `doc` => it's regarded as a doc comment.
 pub(crate) fn extract_doc_comments(attrs: &[syn::Attribute]) -> TokenStream2 {
 	let docs = attrs.iter().filter(|attr| {
-		attr.path.is_ident("doc")
-			&& match attr.parse_meta() {
-				Ok(syn::Meta::NameValue(meta)) => matches!(&meta.lit, syn::Lit::Str(_)),
+		attr.path().is_ident("doc")
+			&& match attr.meta {
+				syn::Meta::NameValue(meta) => matches!(&meta.value, syn::Expr::Verbatim(_)),
 				_ => false,
 			}
 	});
@@ -221,4 +227,62 @@ mod tests {
 		assert!(is_option(&parse_quote!(std::option::Option<R>)));
 		assert!(!is_option(&parse_quote!(foo::bar::Option::Booyah)));
 	}
+
+    // we need a test that gets the right input for generate_where_clause, and then checks that the output is correct.
+    //
+    // We want to make sure that the associated type in the below snippet is bounded, not the
+    // generic type parameter
+    // ### Example
+    //
+    // ```
+    //  use jsonrpsee::proc_macros::rpc;
+    //  use jsonrpsee::core::{RpcResult, SubscriptionResult};
+    //
+    //  trait WithAssoc {
+    //      type Assoc;
+    //  }
+    //
+    //  #[rpc(client, server)]
+    //  pub trait RpcTrait<A: WithAssoc, B, C> {
+    //    #[method(name = "call")]
+    //    fn call(&self, a: A::Assoc) -> RpcResult<B>;
+    //
+    //    #[subscription(name = "subscribe", item = Vec<C>)]
+    //    async fn sub(&self) -> SubscriptionResult;
+    //  }
+    // ```
+    #[test]
+    fn generate_where_clause_works() {
+        // the input should be a syn::ItemTrait
+        let input = parse_quote! {
+            pub trait RpcTrait<A: WithAssoc> {
+                fn call(&self, a: A::Assoc) -> RpcResult<()>;
+
+                async fn sub(&self) -> SubscriptionResult;
+            }
+        };
+
+        // the expected should be a Vec of WherePredicate
+        let expected: Vec<syn::WherePredicate> = vec![
+            parse_quote!(A: WithAssoc),
+            parse_quote!(<A as WithAssoc>::Assoc: std::clone::Clone),
+            parse_quote!(<A as WithAssoc>::Assoc: jsonrpsee::core::Serialize),
+            parse_quote!(<A as WithAssoc>::Assoc: jsonrpsee::core::DeserializeOwned),
+        ];
+
+        let actual = super::generate_where_clause(&input, &[], true, None);
+        assert_eq!(actual, expected, "actual: {:#?}, expected: {:#?}", actual, expected);
+
+        // search through where clause for associated type
+        let mut found_assoc = false;
+        for clause in actual {
+            if let syn::WherePredicate::Type(syn::PredicateType { bounded_ty: syn::Type::Path(path), .. }) = clause {
+                if path.path.segments.iter().any(|seg| seg.ident == "Assoc") {
+                    found_assoc = true;
+                    // panic!("Found associated type in where clause");
+                }
+            }
+        }
+        assert!(found_assoc);
+    }
 }

@@ -27,6 +27,7 @@
 use std::{fmt, iter};
 
 use proc_macro2::{Span, TokenStream as TokenStream2, TokenTree};
+use quote::ToTokens;
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::{spanned::Spanned, Attribute, Error, LitStr, Token};
@@ -108,7 +109,7 @@ impl<T: Parse> Parse for Bracketed<T> {
 
 		syn::bracketed!(content in input);
 
-		let list = content.parse_terminated(Parse::parse)?;
+		let list = content.parse_terminated(Parse::parse, Token![,])?;
 
 		Ok(Bracketed { list })
 	}
@@ -119,17 +120,17 @@ fn parenthesized<T: Parse>(input: ParseStream) -> syn::Result<Punctuated<T, Toke
 
 	syn::parenthesized!(content in input);
 
-	content.parse_terminated(T::parse)
+	content.parse_terminated(T::parse, Token![,])
 }
 
 impl AttributeMeta {
 	/// Parses `Attribute` with plain `TokenStream` into a more robust `AttributeMeta` with
 	/// a collection `Arguments`.
 	pub fn parse(attr: Attribute) -> syn::Result<AttributeMeta> {
-		let path = attr.path;
-		let arguments = parenthesized.parse2(attr.tokens)?;
+		let path = attr.path();
+		let arguments = parenthesized.parse2(attr.into_token_stream())?;
 
-		Ok(AttributeMeta { path, arguments })
+		Ok(AttributeMeta { path: *path, arguments })
 	}
 
 	/// Attempt to get a list of `Argument`s from a list of names in order.
